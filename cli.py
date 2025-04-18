@@ -105,14 +105,23 @@ def main():
     # Print top N stocks by each metric
     for metric in metrics:
         if metric in df.columns:
-            top_metric = df.groupby('Ticker')[metric].mean().sort_values(ascending=False).head(args.top_n)
-            print(f"\nTop {args.top_n} stocks by average {metric}:")
-            print(top_metric)
+            # Ensure metric is numeric
+            df[metric] = pd.to_numeric(df[metric], errors='coerce')
             
-            # Save to CSV
-            top_metric_file = f'top_{args.top_n}_{metric.lower()}_stocks.csv'
-            top_metric.to_csv(top_metric_file)
-            print(f"Saved to {output_dir / top_metric_file}")
+            # Calculate and get top stocks
+            top_metric = df.groupby('Ticker')[metric].mean().sort_values(ascending=False).head(args.top_n)
+            
+            # Only proceed if we have data
+            if len(top_metric) > 0:
+                print(f"\nTop {args.top_n} stocks by average {metric}:")
+                print(top_metric)
+                
+                # Save to CSV
+                top_metric_file = f'top_{args.top_n}_{metric.lower()}_stocks.csv'
+                top_metric.to_csv(top_metric_file)
+                print(f"Saved to {output_dir / top_metric_file}")
+            else:
+                print(f"\nNo valid data for metric: {metric}")
     
     # Skip plots if stats_only is True
     if args.stats_only:
@@ -123,9 +132,16 @@ def main():
     print("\nCreating plots...")
     for metric in metrics:
         if metric in df.columns:
-            print(f"Plotting top stocks by {metric}...")
-            plot_top_stocks(df, metric=metric, top_n=args.top_n)
-            print(f"Saved plot to {output_dir / f'top_{args.top_n}_{metric.lower()}_stocks.png'}")
+            # Ensure metric is numeric
+            df[metric] = pd.to_numeric(df[metric], errors='coerce')
+            
+            # Check if we have valid data
+            if df[metric].notna().any():
+                print(f"Plotting top stocks by {metric}...")
+                plot_top_stocks(df, metric=metric, top_n=args.top_n)
+                print(f"Saved plot to {output_dir / f'top_{args.top_n}_{metric.lower()}_stocks.png'}")
+            else:
+                print(f"No valid data for metric: {metric}, skipping plot")
     
     # Time trends for a specific ticker
     if args.ticker:
@@ -137,20 +153,38 @@ def main():
             print(f"Warning: Ticker {args.ticker} not found in the data")
     else:
         # Use the top performer by EPS
-        top_eps_ticker = df.groupby('Ticker')['EPS'].mean().sort_values(ascending=False).index[0]
-        print(f"Analyzing time trends for top performer {top_eps_ticker}...")
-        analyze_time_trends(df, top_eps_ticker, metrics=metrics)
-        print(f"Saved time trends plot to {output_dir / f'{top_eps_ticker}_time_trends.png'}")
+        # Ensure EPS is numeric
+        df['EPS'] = pd.to_numeric(df['EPS'], errors='coerce')
+        
+        # Calculate top performers by EPS
+        top_eps = df.groupby('Ticker')['EPS'].mean().sort_values(ascending=False)
+        
+        # Check if we have any valid data
+        if len(top_eps) > 0:
+            top_eps_ticker = top_eps.index[0]
+            print(f"Analyzing time trends for top performer {top_eps_ticker}...")
+            analyze_time_trends(df, top_eps_ticker, metrics=metrics)
+            print(f"Saved time trends plot to {output_dir / f'{top_eps_ticker}_time_trends.png'}")
+        else:
+            print("No valid EPS data for time trend analysis")
     
     # Correlation analysis
     print("Performing correlation analysis...")
+    # Ensure metrics are numeric
+    for metric in metrics:
+        if metric in df.columns:
+            df[metric] = pd.to_numeric(df[metric], errors='coerce')
+    
     corr_matrix = correlation_analysis(df, metrics=metrics)
     
-    # Save correlation matrix to CSV
-    corr_file = 'correlation_matrix.csv'
-    corr_matrix.to_csv(corr_file)
-    print(f"Saved correlation matrix to {output_dir / corr_file}")
-    print(f"Saved correlation heatmap to {output_dir / 'correlation_matrix.png'}")
+    # Only save correlation matrix if we have data
+    if not corr_matrix.empty:
+        corr_file = 'correlation_matrix.csv'
+        corr_matrix.to_csv(corr_file)
+        print(f"Saved correlation matrix to {output_dir / corr_file}")
+        print(f"Saved correlation heatmap to {output_dir / 'correlation_matrix.png'}")
+    else:
+        print("No valid data for correlation analysis")
     
     print("\nAnalysis complete! Check the output directory for results.")
     return 0
