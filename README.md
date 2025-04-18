@@ -12,6 +12,7 @@ This repository contains code and data for analyzing stock market information, i
 - `stock_analysis.py`: Python script with functions for data loading, cleaning, and analysis
 - `stock_analysis_demo.ipynb`: Jupyter notebook demonstrating the analysis process
 - `cli.py`: Command-line interface for stock analysis
+- `example.py`: Example script showing custom analysis using the module
 - `requirements.txt`: List of required Python packages
 
 ## Dataset Description
@@ -93,15 +94,35 @@ python cli.py --ticker AAPL
 python cli.py --stats-only
 ```
 
-### Running the Analysis Script Directly
+### Example Custom Analysis
 
-You can also run the analysis script directly:
+For a demonstration of how to use the `stock_analysis.py` module programmatically to create custom analyses, run:
 
 ```bash
-python stock_analysis.py
+python example.py
 ```
 
-This will generate several analysis outputs and save plots in the current directory.
+This script shows three custom analyses:
+1. Comparing EPS progression for top performers
+2. Price to EPS ratio analysis
+3. Revenue vs EPS correlation analysis by ticker
+
+The results will be saved in the `custom_analysis` directory.
+
+### Using the Stock Analysis Module
+
+You can import functions from the module in your own Python scripts:
+
+```python
+from stock_analysis import load_data, clean_data, plot_top_stocks
+
+# Load and clean data
+df = load_data('data/StockData.csv')
+df = clean_data(df)
+
+# Custom analysis
+# ...
+```
 
 ### Using the Jupyter Notebook
 
