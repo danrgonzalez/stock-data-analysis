@@ -27,12 +27,26 @@ def clean_data(df):
     
     # Convert Report column to datetime if possible
     if 'Report' in df.columns:
+        # Convert Report to string type first to handle any non-string values
+        df['Report'] = df['Report'].astype(str)
+        
         # Extract year and quarter from Report (format Q1'11, Q2'11, etc.)
-        df['Year'] = df['Report'].str.extract(r"'(\d{2})").astype(str).apply(lambda x: '20' + x if x.isdigit() else None)
+        df['Year'] = df['Report'].str.extract(r"'(\d{2})").astype(str)
+        df['Year'] = df['Year'].apply(lambda x: '20' + x if x.isdigit() and len(x) == 2 else None)
+        
         df['Quarter'] = df['Report'].str.extract(r"Q(\d)").astype(str)
         
+        # Filter out invalid quarters
+        df.loc[~df['Quarter'].isin(['1', '2', '3', '4']), 'Quarter'] = None
+        
         # Create a proper date column (set to first day of the quarter)
-        df['Date'] = pd.to_datetime(df['Year'] + '-' + df['Quarter'] + '-1', format='%Y-%m-%d', errors='coerce')
+        valid_dates = (~df['Year'].isna()) & (~df['Quarter'].isna())
+        if valid_dates.any():
+            df.loc[valid_dates, 'Date'] = pd.to_datetime(
+                df.loc[valid_dates, 'Year'] + '-' + df.loc[valid_dates, 'Quarter'] + '-1', 
+                format='%Y-%m-%d', 
+                errors='coerce'
+            )
     
     # Remove rows with all missing financial data
     df = df.dropna(subset=['EPS', 'Revenue', 'Price', 'DivAmt'], how='all')
@@ -43,13 +57,20 @@ def basic_stats(df):
     """
     Calculate basic statistics for the dataset
     """
+    # Ensure we have numeric columns for statistics
+    numeric_cols = []
+    for col in ['EPS', 'Revenue', 'Price', 'DivAmt']:
+        if col in df.columns:
+            # Convert to numeric if not already
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            numeric_cols.append(col)
+    
+    # If no numeric columns, return empty DataFrame
+    if not numeric_cols:
+        return pd.DataFrame()
+    
     # Group by ticker and calculate stats
-    ticker_stats = df.groupby('Ticker').agg({
-        'EPS': ['mean', 'std', 'min', 'max', 'count'],
-        'Revenue': ['mean', 'std', 'min', 'max', 'count'],
-        'Price': ['mean', 'std', 'min', 'max', 'count'],
-        'DivAmt': ['mean', 'std', 'min', 'max', 'count']
-    }).round(2)
+    ticker_stats = df.groupby('Ticker')[numeric_cols].agg(['mean', 'std', 'min', 'max', 'count']).round(2)
     
     return ticker_stats
 
@@ -61,11 +82,19 @@ def plot_top_stocks(df, metric='EPS', top_n=10):
         print(f"Metric {metric} not found in the data")
         return
     
+    # Ensure the metric is numeric
+    df[metric] = pd.to_numeric(df[metric], errors='coerce')
+    
     # Calculate average of the metric by ticker
     avg_metric = df.groupby('Ticker')[metric].mean().sort_values(ascending=False)
     
     # Get top N tickers
     top_tickers = avg_metric.head(top_n)
+    
+    # Skip if no data
+    if len(top_tickers) == 0:
+        print(f"No valid data for metric: {metric}")
+        return
     
     # Plot
     plt.figure(figsize=(12, 6))
@@ -91,16 +120,30 @@ def analyze_time_trends(df, ticker, metrics=['EPS', 'Price']):
     # Filter for the specific ticker
     ticker_df = df[df['Ticker'] == ticker].sort_values('Date')
     
+    # Ensure we have valid date data
+    if ticker_df['Date'].isna().all():
+        print(f"No valid date data for {ticker}")
+        return
+    
+    # Convert metrics to numeric
+    for metric in metrics:
+        if metric in ticker_df.columns:
+            ticker_df[metric] = pd.to_numeric(ticker_df[metric], errors='coerce')
+    
     # Plot the metrics over time
     plt.figure(figsize=(14, 7))
     
     for i, metric in enumerate(metrics):
         if metric in ticker_df.columns:
-            plt.subplot(len(metrics), 1, i+1)
-            plt.plot(ticker_df['Date'], ticker_df[metric])
-            plt.title(f'{ticker} - {metric} Over Time')
-            plt.ylabel(metric)
-            plt.grid(True, alpha=0.3)
+            valid_data = ticker_df.dropna(subset=['Date', metric])
+            if len(valid_data) > 0:
+                plt.subplot(len(metrics), 1, i+1)
+                plt.plot(valid_data['Date'], valid_data[metric])
+                plt.title(f'{ticker} - {metric} Over Time')
+                plt.ylabel(metric)
+                plt.grid(True, alpha=0.3)
+            else:
+                print(f"No valid data for {ticker} - {metric}")
     
     plt.tight_layout()
     plt.savefig(f'{ticker}_time_trends.png')
@@ -110,8 +153,20 @@ def correlation_analysis(df, metrics=['EPS', 'Revenue', 'Price', 'DivAmt']):
     """
     Analyze correlations between different metrics
     """
+    # Ensure metrics are numeric
+    for metric in metrics:
+        if metric in df.columns:
+            df[metric] = pd.to_numeric(df[metric], errors='coerce')
+    
     # Calculate correlation matrix
     valid_metrics = [m for m in metrics if m in df.columns]
+    
+    # Skip if no valid metrics
+    if not valid_metrics:
+        print("No valid metrics for correlation analysis")
+        return pd.DataFrame()
+    
+    # Calculate correlation
     corr_matrix = df[valid_metrics].corr().round(2)
     
     # Plot correlation heatmap
@@ -161,9 +216,12 @@ def main():
     plot_top_stocks(df, metric='Revenue', top_n=10)
     
     # Time trends for a top performer
-    top_ticker = top_eps.index[0]
-    print(f"Analyzing time trends for {top_ticker}...")
-    analyze_time_trends(df, top_ticker)
+    if len(top_eps) > 0:
+        top_ticker = top_eps.index[0]
+        print(f"Analyzing time trends for {top_ticker}...")
+        analyze_time_trends(df, top_ticker)
+    else:
+        print("No valid EPS data for time trend analysis")
     
     # Correlation analysis
     print("Performing correlation analysis...")
