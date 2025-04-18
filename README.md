@@ -11,6 +11,8 @@ This repository contains code and data for analyzing stock market information, i
 - `data/StockData.csv`: The dataset containing stock information
 - `stock_analysis.py`: Python script with functions for data loading, cleaning, and analysis
 - `stock_analysis_demo.ipynb`: Jupyter notebook demonstrating the analysis process
+- `cli.py`: Command-line interface for stock analysis
+- `requirements.txt`: List of required Python packages
 
 ## Dataset Description
 
@@ -38,14 +40,62 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. Install required packages:
 ```bash
-pip install pandas matplotlib seaborn numpy jupyter
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-### Running the Analysis Script
+### Command-Line Interface
 
-You can run the analysis script directly:
+The easiest way to analyze the stock data is through the command-line interface:
+
+```bash
+python cli.py
+```
+
+This will run the analysis with default settings and save the results in the `output` directory.
+
+#### CLI Options
+
+```
+usage: cli.py [-h] [--file FILE] [--output OUTPUT] [--top-n TOP_N] [--ticker TICKER] [--metrics METRICS] [--stats-only]
+
+Stock Data Analysis CLI
+
+options:
+  -h, --help            show this help message and exit
+  --file FILE, -f FILE  Path to the stock data CSV file
+  --output OUTPUT, -o OUTPUT
+                        Directory to save output files
+  --top-n TOP_N, -n TOP_N
+                        Number of top stocks to analyze
+  --ticker TICKER, -t TICKER
+                        Specific ticker to analyze
+  --metrics METRICS, -m METRICS
+                        Comma-separated list of metrics to analyze
+  --stats-only          Only output statistics, no plots
+```
+
+Examples:
+
+1. Analyze top 5 stocks by EPS and Revenue:
+```bash
+python cli.py --top-n 5 --metrics EPS,Revenue
+```
+
+2. Analyze a specific ticker (e.g., AAPL):
+```bash
+python cli.py --ticker AAPL
+```
+
+3. Generate only statistics (no plots):
+```bash
+python cli.py --stats-only
+```
+
+### Running the Analysis Script Directly
+
+You can also run the analysis script directly:
 
 ```bash
 python stock_analysis.py
