@@ -9,11 +9,21 @@ def load_data(file_path):
     Load the stock data CSV file into a pandas DataFrame
     """
     df = pd.read_csv(file_path)
+    
+    # Convert numeric columns
+    for col in ['EPS', 'Revenue']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
     # Convert Price and DivAmt to numeric values
     for col in ['Price', 'DivAmt']:
         if col in df.columns:
-            # Remove any non-numeric characters except decimal points
-            df[col] = pd.to_numeric(df[col].replace(r'[^\d.]', '', regex=True), errors='coerce')
+            # First convert to string to handle any non-string values
+            df[col] = df[col].astype(str)
+            # Then remove any non-numeric characters except decimal points
+            df[col] = df[col].replace(r'[^\d.]', '', regex=True)
+            # Convert to numeric
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
     return df
 
