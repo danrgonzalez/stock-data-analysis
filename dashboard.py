@@ -498,12 +498,18 @@ def main():
                     
                     st.dataframe(volatility_data, use_container_width=True)
                     
-                    # Volatility chart
+                    # Volatility chart - Fix the NameError by properly defining the chart
+                    volatility_chart_data = pd.DataFrame({
+                        'Ticker': volatility_data.index,
+                        'Volatility': volatility_data['Volatility (Std Dev)']
+                    })
+                    
                     fig = px.bar(
-                        x=volatility_data.index,
-                        y=volatility_data['Volatility (Std Dev)'],
+                        volatility_chart_data,
+                        x='Ticker',
+                        y='Volatility',
                         title=f"QoQ Volatility: {format_metric_name(volatility_metric)}",
-                        labels={'x': 'Ticker', 'y': 'Volatility (Standard Deviation)'}
+                        labels={'Volatility': 'Volatility (Standard Deviation)'}
                     )
                     fig.update_layout(xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
