@@ -54,10 +54,45 @@ def load_data(file_path):
         # Remove rows with no financial data
         df = df.dropna(subset=['Ticker'])
         
+        # Calculate quarter-over-quarter percentage changes
+        df = calculate_qoq_changes(df)
+        
         return df
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         return pd.DataFrame()
+
+def calculate_qoq_changes(df):
+    """Calculate quarter-over-quarter percentage changes for each ticker"""
+    # Metrics to calculate QoQ changes for
+    metrics = ['EPS', 'Revenue', 'Price', 'DivAmt']
+    
+    # Sort by ticker and date to ensure proper chronological order
+    df = df.sort_values(['Ticker', 'Date'])
+    
+    # Calculate QoQ changes for each metric
+    for metric in metrics:
+        if metric in df.columns:
+            # Calculate percentage change from previous quarter for each ticker
+            df[f'{metric}_QoQ_Change'] = df.groupby('Ticker')[metric].pct_change() * 100
+            
+            # Calculate absolute change as well
+            df[f'{metric}_QoQ_Abs_Change'] = df.groupby('Ticker')[metric].diff()
+    
+    return df
+
+def get_available_metrics(df):
+    """Get list of available metrics including QoQ changes"""
+    base_metrics = [col for col in ['EPS', 'Revenue', 'Price', 'DivAmt'] if col in df.columns]
+    qoq_metrics = [col for col in df.columns if col.endswith('_QoQ_Change')]
+    abs_change_metrics = [col for col in df.columns if col.endswith('_QoQ_Abs_Change')]
+    
+    return {
+        'base_metrics': base_metrics,
+        'qoq_metrics': qoq_metrics,
+        'abs_change_metrics': abs_change_metrics,
+        'all_metrics': base_metrics + qoq_metrics + abs_change_metrics
+    }
 
 def create_time_series_plot(df, tickers, metrics):
     """Create interactive time series plot for selected tickers and metrics"""
@@ -74,7 +109,7 @@ def create_time_series_plot(df, tickers, metrics):
     fig = make_subplots(
         rows=len(metrics), 
         cols=1,
-        subplot_titles=metrics,
+        subplot_titles=[format_metric_name(metric) for metric in metrics],
         shared_xaxes=True,
         vertical_spacing=0.05
     )
@@ -89,13 +124,24 @@ def create_time_series_plot(df, tickers, metrics):
             ticker_data = filtered_df[filtered_df['Ticker'] == ticker].sort_values('Date')
             
             if not ticker_data.empty and not ticker_data[metric].isna().all():
+                # Add suffix for QoQ metrics
+                suffix = ""
+                if "_QoQ_Change" in metric:
+                    suffix = " (%)"
+                elif "_QoQ_Abs_Change" in metric:
+                    suffix = " (Abs)"
+                
                 fig.add_trace(
                     go.Scatter(
                         x=ticker_data['Date'],
                         y=ticker_data[metric],
-                        name=f"{ticker} - {metric}",
+                        name=f"{ticker}{suffix}",
                         line=dict(color=colors[j % len(colors)]),
-                        showlegend=(i == 0)  # Only show legend for first subplot
+                        showlegend=(i == 0),  # Only show legend for first subplot
+                        hovertemplate=f"<b>{ticker}</b><br>" +
+                                    "Date: %{x}<br>" +
+                                    f"{format_metric_name(metric)}: %{y:.2f}{suffix}<br>" +
+                                    "<extra></extra>"
                     ),
                     row=i+1, col=1
                 )
@@ -106,7 +152,23 @@ def create_time_series_plot(df, tickers, metrics):
         hovermode='x unified'
     )
     
+    # Add zero line for QoQ change charts
+    for i, metric in enumerate(metrics):
+        if "_QoQ_Change" in metric or "_QoQ_Abs_Change" in metric:
+            fig.add_hline(y=0, line_dash="dash", line_color="gray", row=i+1, col=1)
+    
     return fig
+
+def format_metric_name(metric):
+    """Format metric names for display"""
+    if metric.endswith('_QoQ_Change'):
+        base_metric = metric.replace('_QoQ_Change', '')
+        return f"{base_metric} QoQ Change (%)"
+    elif metric.endswith('_QoQ_Abs_Change'):
+        base_metric = metric.replace('_QoQ_Abs_Change', '')
+        return f"{base_metric} QoQ Absolute Change"
+    else:
+        return metric
 
 def create_comparison_chart(df, tickers, metric, chart_type='bar'):
     """Create comparison charts for selected tickers"""
@@ -117,22 +179,34 @@ def create_comparison_chart(df, tickers, metric, chart_type='bar'):
     comparison_data = df[df['Ticker'].isin(tickers)].groupby('Ticker')[metric].agg(['mean', 'std', 'count']).reset_index()
     comparison_data.columns = ['Ticker', 'Average', 'StdDev', 'Count']
     
+    # Format the title and labels
+    metric_display = format_metric_name(metric)
+    
     if chart_type == 'bar':
         fig = px.bar(
             comparison_data, 
             x='Ticker', 
             y='Average',
-            title=f'Average {metric} by Ticker',
+            title=f'Average {metric_display} by Ticker',
             error_y='StdDev'
         )
+        
+        # Add zero line for QoQ metrics
+        if "_QoQ_Change" in metric or "_QoQ_Abs_Change" in metric:
+            fig.add_hline(y=0, line_dash="dash", line_color="gray")
+            
     else:  # box plot
         filtered_df = df[df['Ticker'].isin(tickers)]
         fig = px.box(
             filtered_df, 
             x='Ticker', 
             y=metric,
-            title=f'{metric} Distribution by Ticker'
+            title=f'{metric_display} Distribution by Ticker'
         )
+        
+        # Add zero line for QoQ metrics
+        if "_QoQ_Change" in metric or "_QoQ_Abs_Change" in metric:
+            fig.add_hline(y=0, line_dash="dash", line_color="gray")
     
     fig.update_layout(xaxis_tickangle=-45)
     return fig
@@ -143,23 +217,56 @@ def create_correlation_heatmap(df, tickers):
         return None
     
     filtered_df = df[df['Ticker'].isin(tickers)]
+    
+    # Get all numeric columns including QoQ changes
     numeric_cols = ['EPS', 'Revenue', 'Price', 'DivAmt']
-    available_cols = [col for col in numeric_cols if col in filtered_df.columns]
+    qoq_cols = [col for col in filtered_df.columns if col.endswith('_QoQ_Change')]
+    all_cols = numeric_cols + qoq_cols
+    
+    available_cols = [col for col in all_cols if col in filtered_df.columns]
     
     if len(available_cols) < 2:
         return None
     
     corr_matrix = filtered_df[available_cols].corr()
     
+    # Format column names for display
+    display_names = [format_metric_name(col) for col in available_cols]
+    corr_matrix.index = display_names
+    corr_matrix.columns = display_names
+    
     fig = px.imshow(
         corr_matrix,
         text_auto=True,
         aspect="auto",
-        title="Correlation Matrix",
+        title="Correlation Matrix (Including QoQ Changes)",
         color_continuous_scale='RdBu'
     )
     
     return fig
+
+def create_qoq_summary_table(df, tickers):
+    """Create summary table for QoQ changes"""
+    if not tickers:
+        return pd.DataFrame()
+    
+    filtered_df = df[df['Ticker'].isin(tickers)]
+    
+    # Get QoQ change columns
+    qoq_cols = [col for col in filtered_df.columns if col.endswith('_QoQ_Change')]
+    
+    if not qoq_cols:
+        return pd.DataFrame()
+    
+    # Calculate summary statistics for QoQ changes
+    summary_stats = filtered_df.groupby('Ticker')[qoq_cols].agg([
+        'mean', 'std', 'min', 'max', 'count'
+    ]).round(2)
+    
+    # Flatten column names
+    summary_stats.columns = [f"{col[0].replace('_QoQ_Change', '')}_{col[1]}" for col in summary_stats.columns.values]
+    
+    return summary_stats
 
 def main():
     st.title("📈 Interactive Stock Data Dashboard")
@@ -193,6 +300,9 @@ def main():
     # Display basic info
     st.sidebar.success(f"✅ Data loaded: {len(df)} records, {df['Ticker'].nunique()} unique tickers")
     
+    # Get available metrics
+    metrics_dict = get_available_metrics(df)
+    
     # Filters
     st.sidebar.header("Filters")
     
@@ -224,14 +334,27 @@ def main():
             df = df[(df['Date'] >= pd.Timestamp(date_range[0])) & 
                    (df['Date'] <= pd.Timestamp(date_range[1]))]
     
-    # Metric selection
-    available_metrics = [col for col in ['EPS', 'Revenue', 'Price', 'DivAmt'] if col in df.columns]
-    selected_metrics = st.sidebar.multiselect(
-        "Select Metrics",
-        options=available_metrics,
-        default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
-        help="Choose metrics to display in time series"
+    # Metric selection with categories
+    st.sidebar.subheader("Select Metrics")
+    
+    # Base metrics
+    selected_base_metrics = st.sidebar.multiselect(
+        "Base Metrics",
+        options=metrics_dict['base_metrics'],
+        default=metrics_dict['base_metrics'][:2] if len(metrics_dict['base_metrics']) >= 2 else metrics_dict['base_metrics'],
+        help="Choose base financial metrics"
     )
+    
+    # QoQ Change metrics
+    selected_qoq_metrics = st.sidebar.multiselect(
+        "Quarter-over-Quarter % Changes",
+        options=metrics_dict['qoq_metrics'],
+        default=[],
+        help="Choose QoQ percentage change metrics"
+    )
+    
+    # Combine selected metrics
+    selected_metrics = selected_base_metrics + selected_qoq_metrics
     
     # Main content area
     if not selected_tickers:
@@ -239,7 +362,13 @@ def main():
         st.stop()
     
     # Create tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Time Series", "📈 Comparison", "🔗 Correlation", "📋 Data Table"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Time Series", 
+        "📈 Comparison", 
+        "🔗 Correlation", 
+        "📋 Data Table",
+        "📉 QoQ Analysis"
+    ])
     
     with tab1:
         st.header("Time Series Analysis")
@@ -261,7 +390,7 @@ def main():
         with col2:
             comparison_metric = st.selectbox(
                 "Select Metric",
-                options=available_metrics,
+                options=metrics_dict['all_metrics'],
                 key="comparison_metric"
             )
             
@@ -300,7 +429,7 @@ def main():
         # Display summary statistics
         st.subheader("Summary Statistics")
         if not filtered_df.empty:
-            summary_stats = filtered_df.groupby('Ticker')[available_metrics].agg(['mean', 'std', 'min', 'max', 'count']).round(3)
+            summary_stats = filtered_df.groupby('Ticker')[metrics_dict['all_metrics']].agg(['mean', 'std', 'min', 'max', 'count']).round(3)
             st.dataframe(summary_stats, use_container_width=True)
         
         # Display raw data
@@ -320,6 +449,64 @@ def main():
             )
         else:
             st.warning("No data to display.")
+    
+    with tab5:
+        st.header("Quarter-over-Quarter Analysis")
+        
+        if not selected_tickers:
+            st.warning("Please select tickers to view QoQ analysis.")
+        else:
+            # QoQ Summary Statistics
+            st.subheader("QoQ Change Summary Statistics")
+            qoq_summary = create_qoq_summary_table(df, selected_tickers)
+            if not qoq_summary.empty:
+                st.dataframe(qoq_summary, use_container_width=True)
+                
+                st.markdown("**Legend**: mean = average change, std = volatility, min/max = range, count = number of quarters")
+            else:
+                st.warning("No QoQ data available.")
+            
+            # Recent QoQ Changes
+            st.subheader("Most Recent Quarter Changes")
+            filtered_df = df[df['Ticker'].isin(selected_tickers)]
+            
+            if not filtered_df.empty and 'Date' in filtered_df.columns:
+                # Get most recent quarter for each ticker
+                latest_data = filtered_df.loc[filtered_df.groupby('Ticker')['Date'].idxmax()]
+                
+                # Select QoQ change columns
+                qoq_cols = [col for col in latest_data.columns if col.endswith('_QoQ_Change')]
+                display_cols = ['Ticker', 'Report', 'Date'] + qoq_cols
+                
+                recent_changes = latest_data[display_cols].round(2)
+                st.dataframe(recent_changes, use_container_width=True)
+            
+            # QoQ Volatility Analysis
+            st.subheader("QoQ Volatility Analysis")
+            if metrics_dict['qoq_metrics']:
+                volatility_metric = st.selectbox(
+                    "Select QoQ Metric for Volatility Analysis",
+                    options=metrics_dict['qoq_metrics'],
+                    key="volatility_metric"
+                )
+                
+                if volatility_metric:
+                    # Calculate volatility (standard deviation of QoQ changes)
+                    volatility_data = filtered_df.groupby('Ticker')[volatility_metric].agg(['std', 'mean']).round(2)
+                    volatility_data.columns = ['Volatility (Std Dev)', 'Average Change']
+                    volatility_data = volatility_data.sort_values('Volatility (Std Dev)', ascending=False)
+                    
+                    st.dataframe(volatility_data, use_container_width=True)
+                    
+                    # Volatility chart
+                    fig = px.bar(
+                        x=volatility_data.index,
+                        y=volatility_data['Volatility (Std Dev)'],
+                        title=f"QoQ Volatility: {format_metric_name(volatility_metric)}",
+                        labels={'x': 'Ticker', 'y': 'Volatility (Standard Deviation)'}
+                    )
+                    fig.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
