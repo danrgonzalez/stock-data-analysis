@@ -131,6 +131,9 @@ def create_time_series_plot(df, tickers, metrics):
                 elif "_QoQ_Abs_Change" in metric:
                     suffix = " (Abs)"
                 
+                # Format the metric name for hover
+                formatted_metric = format_metric_name(metric)
+                
                 fig.add_trace(
                     go.Scatter(
                         x=ticker_data['Date'],
@@ -138,10 +141,12 @@ def create_time_series_plot(df, tickers, metrics):
                         name=f"{ticker}{suffix}",
                         line=dict(color=colors[j % len(colors)]),
                         showlegend=(i == 0),  # Only show legend for first subplot
-                        hovertemplate=f"<b>{ticker}</b><br>" +
-                                    "Date: %{x}<br>" +
-                                    f"{format_metric_name(metric)}: %{y:.2f}{suffix}<br>" +
-                                    "<extra></extra>"
+                        hovertemplate=(
+                            f"<b>{ticker}</b><br>"
+                            "Date: %{x}<br>"
+                            f"{formatted_metric}: %{{y:.2f}}{suffix}<br>"
+                            "<extra></extra>"
+                        )
                     ),
                     row=i+1, col=1
                 )
