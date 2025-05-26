@@ -6,24 +6,70 @@ This repository contains code and data for analyzing stock market information, i
 - Stock Price
 - Dividend Amounts
 
+## 🆕 Interactive Dashboard
+
+**NEW**: An interactive web dashboard built with Streamlit for exploring your stock data!
+
+### Quick Start with Dashboard
+
+1. **Clone and Setup**:
+```bash
+git clone https://github.com/danrgonzalez/stock-data-analysis.git
+cd stock-data-analysis
+```
+
+2. **Run Dashboard** (Easy method):
+```bash
+python run_dashboard.py
+```
+This will automatically install requirements and launch the dashboard.
+
+3. **Manual Dashboard Launch**:
+```bash
+pip install -r requirements.txt
+streamlit run dashboard.py
+```
+
+4. **Upload Your Data**: When the dashboard opens, upload your `StockData.xlsx` file using the sidebar file uploader.
+
+### Dashboard Features
+
+- 📊 **Time Series Analysis**: Interactive plots showing stock metrics over time
+- 📈 **Ticker Comparison**: Compare multiple stocks with bar charts and box plots
+- 🔗 **Correlation Analysis**: Heatmaps showing relationships between metrics
+- 📋 **Data Tables**: View raw data and summary statistics
+- 🎛️ **Interactive Filters**: Select tickers, date ranges, and metrics
+- 💾 **Export Options**: Download filtered data as CSV
+
+The dashboard supports:
+- Multiple ticker selection and comparison
+- Date range filtering
+- Metric selection (EPS, Revenue, Price, DivAmt)
+- Various chart types and visualizations
+- Responsive design that works on desktop and mobile
+
 ## Repository Structure
 
+- `dashboard.py`: **NEW** Interactive Streamlit dashboard
+- `run_dashboard.py`: **NEW** Easy dashboard launcher script
 - `data/StockData.csv`: The dataset containing stock information
 - `stock_analysis.py`: Python script with functions for data loading, cleaning, and analysis
 - `stock_analysis_demo.ipynb`: Jupyter notebook demonstrating the analysis process
 - `cli.py`: Command-line interface for stock analysis
 - `example.py`: Example script showing custom analysis using the module
-- `requirements.txt`: List of required Python packages
+- `requirements.txt`: List of required Python packages (updated with dashboard dependencies)
 
 ## Dataset Description
 
-The `StockData.csv` file contains the following columns:
-- `Ticker`: Stock symbol
+The stock data contains the following columns:
+- `Ticker`: Stock symbol (149 unique tickers)
 - `Report`: Reporting period (e.g., Q1'11, Q2'11)
 - `EPS`: Earnings Per Share
 - `Revenue`: Company revenue for the period
 - `Price`: Stock price
 - `DivAmt`: Dividend amount
+
+Data spans from 2011 onwards with quarterly financial data.
 
 ## Setup Instructions
 
@@ -44,17 +90,19 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Usage
+## Usage Options
 
-### Command-Line Interface
+### Option 1: Interactive Dashboard (Recommended)
+```bash
+python run_dashboard.py
+```
+Then upload your Excel file and start exploring!
 
-The easiest way to analyze the stock data is through the command-line interface:
+### Option 2: Command-Line Interface
 
 ```bash
 python cli.py
 ```
-
-This will run the analysis with default settings and save the results in the `output` directory.
 
 #### CLI Options
 
@@ -94,22 +142,32 @@ python cli.py --ticker AAPL
 python cli.py --stats-only
 ```
 
-### Example Custom Analysis
+### Option 3: Custom Analysis
 
-For a demonstration of how to use the `stock_analysis.py` module programmatically to create custom analyses, run:
+For a demonstration of custom programmatic analysis:
 
 ```bash
 python example.py
 ```
 
-This script shows three custom analyses:
-1. Comparing EPS progression for top performers
-2. Price to EPS ratio analysis
-3. Revenue vs EPS correlation analysis by ticker
+### Option 4: Jupyter Notebook
 
-The results will be saved in the `custom_analysis` directory.
+For interactive analysis:
 
-### Using the Stock Analysis Module
+```bash
+jupyter notebook stock_analysis_demo.ipynb
+```
+
+## Dashboard Screenshots
+
+The dashboard provides multiple views:
+
+1. **Time Series**: Compare metrics over time for selected tickers
+2. **Comparison**: Bar charts and box plots comparing different stocks
+3. **Correlation**: Heatmap showing relationships between financial metrics
+4. **Data Table**: Raw data view with summary statistics and export options
+
+## Using the Stock Analysis Module
 
 You can import functions from the module in your own Python scripts:
 
@@ -124,25 +182,6 @@ df = clean_data(df)
 # ...
 ```
 
-### Using the Jupyter Notebook
-
-For interactive analysis, you can use the Jupyter notebook:
-
-```bash
-jupyter notebook stock_analysis_demo.ipynb
-```
-
-The notebook contains step-by-step analysis with visualizations:
-1. Data loading and exploration
-2. Data cleaning
-3. Basic statistics
-4. Visualization of top stocks
-5. Time series analysis
-6. Correlation analysis
-7. Sector-based analysis (simulated)
-8. Analysis of EPS and price relationship
-9. Dividend analysis
-
 ## Extending the Analysis
 
 Here are some ways you can extend this analysis:
@@ -152,6 +191,20 @@ Here are some ways you can extend this analysis:
 3. Create a portfolio optimization algorithm based on the metrics
 4. Add risk analysis using volatility measures
 5. Incorporate external economic indicators
+6. Add more dashboard features like technical indicators
+
+## Dependencies
+
+Updated requirements include:
+- pandas>=1.3.0
+- matplotlib>=3.4.0  
+- seaborn>=0.11.0
+- numpy>=1.20.0
+- jupyter>=1.0.0
+- notebook>=6.4.0
+- **streamlit>=1.28.0** (for dashboard)
+- **plotly>=5.15.0** (for interactive plots)
+- **openpyxl>=3.0.0** (for Excel file reading)
 
 ## License
 
