@@ -54,6 +54,9 @@ def load_data(file_path):
         # Remove rows with no financial data
         df = df.dropna(subset=['Ticker'])
         
+        # Calculate TTM values first (before QoQ changes)
+        df = calculate_ttm_values(df)
+        
         # Calculate quarter-over-quarter percentage changes
         df = calculate_qoq_changes(df)
         
@@ -62,16 +65,33 @@ def load_data(file_path):
         st.error(f"Error loading data: {str(e)}")
         return pd.DataFrame()
 
+def calculate_ttm_values(df):
+    """Calculate Trailing Twelve Months (TTM) values for EPS and Revenue"""
+    # Sort by ticker and date to ensure proper chronological order
+    df = df.sort_values(['Ticker', 'Date'])
+    
+    # Calculate TTM for EPS and Revenue
+    ttm_metrics = ['EPS', 'Revenue']
+    
+    for metric in ttm_metrics:
+        if metric in df.columns:
+            # Calculate rolling sum of last 4 quarters (including current quarter)
+            df[f'{metric}_TTM'] = df.groupby('Ticker')[metric].rolling(window=4, min_periods=1).sum().reset_index(0, drop=True)
+    
+    return df
+
 def calculate_qoq_changes(df):
     """Calculate quarter-over-quarter percentage changes for each ticker"""
-    # Metrics to calculate QoQ changes for
-    metrics = ['EPS', 'Revenue', 'Price', 'DivAmt']
+    # Metrics to calculate QoQ changes for (including TTM values)
+    base_metrics = ['EPS', 'Revenue', 'Price', 'DivAmt']
+    ttm_metrics = ['EPS_TTM', 'Revenue_TTM']
+    all_metrics = base_metrics + ttm_metrics
     
     # Sort by ticker and date to ensure proper chronological order
     df = df.sort_values(['Ticker', 'Date'])
     
     # Calculate QoQ changes for each metric
-    for metric in metrics:
+    for metric in all_metrics:
         if metric in df.columns:
             # Calculate percentage change from previous quarter for each ticker
             df[f'{metric}_QoQ_Change'] = df.groupby('Ticker')[metric].pct_change() * 100
@@ -82,16 +102,18 @@ def calculate_qoq_changes(df):
     return df
 
 def get_available_metrics(df):
-    """Get list of available metrics including QoQ changes"""
+    """Get list of available metrics including QoQ changes and TTM values"""
     base_metrics = [col for col in ['EPS', 'Revenue', 'Price', 'DivAmt'] if col in df.columns]
+    ttm_metrics = [col for col in df.columns if col.endswith('_TTM')]
     qoq_metrics = [col for col in df.columns if col.endswith('_QoQ_Change')]
     abs_change_metrics = [col for col in df.columns if col.endswith('_QoQ_Abs_Change')]
     
     return {
         'base_metrics': base_metrics,
+        'ttm_metrics': ttm_metrics,
         'qoq_metrics': qoq_metrics,
         'abs_change_metrics': abs_change_metrics,
-        'all_metrics': base_metrics + qoq_metrics + abs_change_metrics
+        'all_metrics': base_metrics + ttm_metrics + qoq_metrics + abs_change_metrics
     }
 
 def create_time_series_plot(df, tickers, metrics):
@@ -124,12 +146,14 @@ def create_time_series_plot(df, tickers, metrics):
             ticker_data = filtered_df[filtered_df['Ticker'] == ticker].sort_values('Date')
             
             if not ticker_data.empty and not ticker_data[metric].isna().all():
-                # Add suffix for QoQ metrics
+                # Add suffix for different metric types
                 suffix = ""
                 if "_QoQ_Change" in metric:
                     suffix = " (%)"
                 elif "_QoQ_Abs_Change" in metric:
                     suffix = " (Abs)"
+                elif "_TTM" in metric:
+                    suffix = " (TTM)"
                 
                 # Format the metric name for hover
                 formatted_metric = format_metric_name(metric)
@@ -166,11 +190,18 @@ def create_time_series_plot(df, tickers, metrics):
 
 def format_metric_name(metric):
     """Format metric names for display"""
-    if metric.endswith('_QoQ_Change'):
+    if metric.endswith('_TTM'):
+        base_metric = metric.replace('_TTM', '')
+        return f"{base_metric} (TTM)"
+    elif metric.endswith('_QoQ_Change'):
         base_metric = metric.replace('_QoQ_Change', '')
+        if base_metric.endswith('_TTM'):
+            base_metric = base_metric.replace('_TTM', '') + ' TTM'
         return f"{base_metric} QoQ Change (%)"
     elif metric.endswith('_QoQ_Abs_Change'):
         base_metric = metric.replace('_QoQ_Abs_Change', '')
+        if base_metric.endswith('_TTM'):
+            base_metric = base_metric.replace('_TTM', '') + ' TTM'
         return f"{base_metric} QoQ Absolute Change"
     else:
         return metric
@@ -223,10 +254,11 @@ def create_correlation_heatmap(df, tickers):
     
     filtered_df = df[df['Ticker'].isin(tickers)]
     
-    # Get all numeric columns including QoQ changes
+    # Get all numeric columns including QoQ changes and TTM values
     numeric_cols = ['EPS', 'Revenue', 'Price', 'DivAmt']
+    ttm_cols = [col for col in filtered_df.columns if col.endswith('_TTM')]
     qoq_cols = [col for col in filtered_df.columns if col.endswith('_QoQ_Change')]
-    all_cols = numeric_cols + qoq_cols
+    all_cols = numeric_cols + ttm_cols + qoq_cols
     
     available_cols = [col for col in all_cols if col in filtered_df.columns]
     
@@ -244,7 +276,7 @@ def create_correlation_heatmap(df, tickers):
         corr_matrix,
         text_auto=True,
         aspect="auto",
-        title="Correlation Matrix (Including QoQ Changes)",
+        title="Correlation Matrix (Including TTM & QoQ Changes)",
         color_continuous_scale='RdBu'
     )
     
@@ -270,6 +302,29 @@ def create_qoq_summary_table(df, tickers):
     
     # Flatten column names
     summary_stats.columns = [f"{col[0].replace('_QoQ_Change', '')}_{col[1]}" for col in summary_stats.columns.values]
+    
+    return summary_stats
+
+def create_ttm_summary_table(df, tickers):
+    """Create summary table for TTM values"""
+    if not tickers:
+        return pd.DataFrame()
+    
+    filtered_df = df[df['Ticker'].isin(tickers)]
+    
+    # Get TTM columns
+    ttm_cols = [col for col in filtered_df.columns if col.endswith('_TTM')]
+    
+    if not ttm_cols:
+        return pd.DataFrame()
+    
+    # Calculate summary statistics for TTM values
+    summary_stats = filtered_df.groupby('Ticker')[ttm_cols].agg([
+        'mean', 'std', 'min', 'max', 'count'
+    ]).round(2)
+    
+    # Flatten column names
+    summary_stats.columns = [f"{col[0].replace('_TTM', '')}_{col[1]}" for col in summary_stats.columns.values]
     
     return summary_stats
 
@@ -350,6 +405,14 @@ def main():
         help="Choose base financial metrics"
     )
     
+    # TTM metrics
+    selected_ttm_metrics = st.sidebar.multiselect(
+        "Trailing Twelve Months (TTM)",
+        options=metrics_dict['ttm_metrics'],
+        default=[],
+        help="Choose TTM metrics (sum of last 4 quarters)"
+    )
+    
     # QoQ Change metrics
     selected_qoq_metrics = st.sidebar.multiselect(
         "Quarter-over-Quarter % Changes",
@@ -359,7 +422,7 @@ def main():
     )
     
     # Combine selected metrics
-    selected_metrics = selected_base_metrics + selected_qoq_metrics
+    selected_metrics = selected_base_metrics + selected_ttm_metrics + selected_qoq_metrics
     
     # Main content area
     if not selected_tickers:
@@ -367,12 +430,13 @@ def main():
         st.stop()
     
     # Create tabs for different views
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Time Series", 
         "📈 Comparison", 
         "🔗 Correlation", 
         "📋 Data Table",
-        "📉 QoQ Analysis"
+        "📉 QoQ Analysis",
+        "📆 TTM Analysis"
     ])
     
     with tab1:
@@ -503,7 +567,7 @@ def main():
                     
                     st.dataframe(volatility_data, use_container_width=True)
                     
-                    # Volatility chart - Fix the NameError by properly defining the chart
+                    # Volatility chart
                     volatility_chart_data = pd.DataFrame({
                         'Ticker': volatility_data.index,
                         'Volatility': volatility_data['Volatility (Std Dev)']
@@ -518,6 +582,86 @@ def main():
                     )
                     fig.update_layout(xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
+    
+    with tab6:
+        st.header("Trailing Twelve Months (TTM) Analysis")
+        
+        if not selected_tickers:
+            st.warning("Please select tickers to view TTM analysis.")
+        else:
+            # TTM Summary Statistics
+            st.subheader("TTM Summary Statistics")
+            ttm_summary = create_ttm_summary_table(df, selected_tickers)
+            if not ttm_summary.empty:
+                st.dataframe(ttm_summary, use_container_width=True)
+                
+                st.markdown("**Legend**: TTM values are the sum of the last 4 quarters (including current quarter)")
+            else:
+                st.warning("No TTM data available.")
+            
+            # Recent TTM Values
+            st.subheader("Most Recent TTM Values")
+            filtered_df = df[df['Ticker'].isin(selected_tickers)]
+            
+            if not filtered_df.empty and 'Date' in filtered_df.columns:
+                # Get most recent quarter for each ticker
+                latest_data = filtered_df.loc[filtered_df.groupby('Ticker')['Date'].idxmax()]
+                
+                # Select TTM columns
+                ttm_cols = [col for col in latest_data.columns if col.endswith('_TTM')]
+                display_cols = ['Ticker', 'Report', 'Date'] + ttm_cols
+                
+                recent_ttm = latest_data[display_cols].round(2)
+                st.dataframe(recent_ttm, use_container_width=True)
+            
+            # TTM Growth Analysis
+            st.subheader("TTM Growth Analysis")
+            if metrics_dict['ttm_metrics']:
+                ttm_metric = st.selectbox(
+                    "Select TTM Metric for Growth Analysis",
+                    options=metrics_dict['ttm_metrics'],
+                    key="ttm_growth_metric"
+                )
+                
+                if ttm_metric:
+                    # Calculate TTM growth (YoY comparison)
+                    # Get TTM values from 4 quarters ago vs current TTM
+                    ttm_growth_data = []
+                    
+                    for ticker in selected_tickers:
+                        ticker_data = filtered_df[filtered_df['Ticker'] == ticker].sort_values('Date')
+                        if len(ticker_data) >= 5:  # Need at least 5 quarters to compare YoY TTM
+                            current_ttm = ticker_data[ttm_metric].iloc[-1]
+                            year_ago_ttm = ticker_data[ttm_metric].iloc[-5]  # 4 quarters ago
+                            
+                            if pd.notna(current_ttm) and pd.notna(year_ago_ttm) and year_ago_ttm != 0:
+                                growth_rate = ((current_ttm - year_ago_ttm) / year_ago_ttm) * 100
+                                ttm_growth_data.append({
+                                    'Ticker': ticker,
+                                    'Current TTM': current_ttm,
+                                    'Year Ago TTM': year_ago_ttm,
+                                    'YoY Growth (%)': growth_rate
+                                })
+                    
+                    if ttm_growth_data:
+                        growth_df = pd.DataFrame(ttm_growth_data)
+                        growth_df = growth_df.sort_values('YoY Growth (%)', ascending=False)
+                        st.dataframe(growth_df.round(2), use_container_width=True)
+                        
+                        # Growth chart
+                        fig = px.bar(
+                            growth_df,
+                            x='Ticker',
+                            y='YoY Growth (%)',
+                            title=f"Year-over-Year TTM Growth: {format_metric_name(ttm_metric)}",
+                            color='YoY Growth (%)',
+                            color_continuous_scale='RdYlGn'
+                        )
+                        fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                        fig.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("Insufficient data for TTM growth analysis. Need at least 5 quarters of data.")
 
 if __name__ == "__main__":
     main()
