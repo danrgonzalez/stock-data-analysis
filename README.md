@@ -1,5 +1,7 @@
 # Stock Data Analysis
 
+Up to TTM
+
 This repository contains code and data for analyzing stock market information, including:
 - Earnings Per Share (EPS)
 - Revenue
