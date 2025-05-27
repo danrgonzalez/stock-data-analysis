@@ -52,9 +52,6 @@ def load_data(file_path):
                 )
         
         # Remove rows with no financial data
-<<<<<<< HEAD
-        df = df.dropna(subset=['Ticker'])
-=======
         df = df.dropna(subset=['Ticker'])
         
         # Calculate TTM values first (before QoQ changes)
@@ -875,4 +872,3 @@ def main():
 
 if __name__ == "__main__":
     main()
->>>>>>> 183cf39 (adding multiple)
